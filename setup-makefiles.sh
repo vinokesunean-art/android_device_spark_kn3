@@ -8,7 +8,7 @@
 
 set -e
 
-DEVICE=tssi
+DEVICE=kn3
 VENDOR=tecno
 
 # Load extract_utils and do some sanity checks
