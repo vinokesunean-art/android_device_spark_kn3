@@ -1,0 +1,79 @@
+# Recovery init for Tecno KN3 (ums9230_KN3)
+import /init.recovery.common.rc
+
+on fs
+    start prepdecrypt
+
+service prepdecrypt /system/bin/prepdecrypt.sh
+    oneshot
+    disabled
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
+service keymint-2-0 /system/bin/android.hardware.security.keymint@2.0-unisoc.service.trusty
+    interface aidl android.hardware.security.keymint.IKeyMintDevice/default
+    user root
+    group root drmrpc
+    disabled
+    seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /system/bin/android.hardware.gatekeeper@1.0-service.trusty
+    interface hidl android.hardware.gatekeeper@1.0::IGatekeeper default
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+service vendor.tsupplicant /system/bin/tsupplicant odm/firmware odm/firmware/fingerprint vendor/firmware
+    user system
+    group system
+    disabled
+    seclabel u:r:recovery:s0
+    setenv LD_LIBRARY_PATH /system/lib64
+
+service storage-proxies /system/bin/start_storage_proxies.sh
+    oneshot
+    disabled
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
+# TEE secure-storage proxies
+service vendor.rpmbproxy /system/bin/sprdstorageproxyd -f rpmb -d /dev/trusty-ipc-dev0 -p /data/vendor/sprd_ss
+    user root
+    group system
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
+    setenv LD_LIBRARY_PATH /system/lib64
+
+service vendor.nsproxy /system/bin/sprdstorageproxyd -f ns -d /dev/trusty-ipc-dev0 -p /data/vendor/sprd_ss
+    user root
+    group system
+    disabled
+    seclabel u:r:recovery:s0
+    setenv LD_LIBRARY_PATH /system/lib64
+
+service vendor.prodproxy /system/bin/sprdstorageproxyd -f prodnv -d /dev/trusty-ipc-dev0 -p /mnt/vendor/productinfo/sprd_ss
+    user root
+    group system
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
+    setenv LD_LIBRARY_PATH /system/lib64
+
+on property:crypto.ready=1
+    start keymint-2-0
+    start storage-proxies
+    start vendor.tsupplicant
+
+on property:twrp.storageproxies.ready=1
+    start gatekeeper-1-0
+
+on property:ro.crypto.state=unsupported || property:ro.crypto.state=unencrypted || property:twrp.decrypt.done=true
+    stop keymint-2-0
+    stop gatekeeper-1-0
+
+on boot
+    start healthd

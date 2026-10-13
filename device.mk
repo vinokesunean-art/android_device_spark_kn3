@@ -1,35 +1,70 @@
 #
 # Copyright (C) 2026 The Android Open Source Project
-# Copyright (C) 2026 SebaUbuntu's TWRP device tree generator
-#
 # SPDX-License-Identifier: Apache-2.0
 #
 
-LOCAL_PATH := device/tecno/tssi
-# A/B
+LOCAL_PATH := device/tecno/kn3
+
+# OrangeFox Maintainer
+OF_MAINTAINER := vinokesunean
+
+# Enable Virtual A/B OTA
+ENABLE_VIRTUAL_AB := true
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/launch_with_vendor_ramdisk.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
+
+# Dynamic Partitions
+PRODUCT_USE_DYNAMIC_PARTITIONS := true
+
+# A/B OTA postinstall
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_system=true \
     POSTINSTALL_PATH_system=system/bin/otapreopt_script \
-    FILESYSTEM_TYPE_system=ext4 \
+    FILESYSTEM_TYPE_system=erofs \
     POSTINSTALL_OPTIONAL_system=true
 
-# Boot control HAL
-PRODUCT_PACKAGES += \
-    android.hardware.boot@1.0-impl \
-    android.hardware.boot@1.0-service
-
-PRODUCT_PACKAGES += \
-    bootctrl.ums9230
-
-PRODUCT_STATIC_BOOT_CONTROL_HAL := \
-    bootctrl.ums9230 \
-    libgptutils \
-    libz \
-    libcutils
-
+# OTA / fastbootd packages
 PRODUCT_PACKAGES += \
     otapreopt_script \
     cppreopts.sh \
     update_engine \
     update_verifier \
     update_engine_sideload
+
+PRODUCT_PACKAGES_DEBUG += \
+    update_engine_client
+
+PRODUCT_PACKAGES += \
+    libion.recovery \
+    android.hardware.fastboot@1.0-impl-mock \
+    android.hardware.fastboot@1.0-impl-mock.recovery \
+    fastbootd
+
+# Boot control HAL + health
+PRODUCT_PACKAGES += \
+    android.hardware.health@2.1-impl \
+    android.hardware.health@2.1-service \
+    bootctrl.ums9230
+
+# Security (AIDL NDK packages for Android 13/14 decryption)
+PRODUCT_PACKAGES += \
+    android.hardware.security.secureclock-V1-ndk \
+    android.hardware.security.sharedsecret-V1-ndk
+
+# Gatekeeper (Trusty)
+PRODUCT_PACKAGES += \
+    android.hardware.gatekeeper-V1-ndk
+
+# Keymint (AIDL V2/V3 Trusty)
+PRODUCT_PACKAGES += \
+    android.hardware.security.keymint-V3-ndk
+
+# Keystore2
+PRODUCT_PACKAGES += \
+    android.system.keystore2
+
+# Trusty TEE libs
+PRODUCT_PACKAGES += \
+    libkeymint \
+    libtrusty \
+    libgatekeeper
