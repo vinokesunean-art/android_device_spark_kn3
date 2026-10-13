@@ -12,7 +12,7 @@ on:
       DEVICE_TREE_BRANCH:
         description: Device Tree Branch
         required: true
-        default: master
+        default: fox14.1
       DEVICE_PATH:
         description: Path the device tree should be synced to, relative to source root
         required: true
