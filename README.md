@@ -1,4 +1,4 @@
-# Android device tree for TECNO TSSI (tssi)
+# Android device tree for TECNO KN3(GO3)
 
 ```
 #
