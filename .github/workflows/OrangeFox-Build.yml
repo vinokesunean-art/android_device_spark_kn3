@@ -6,46 +6,68 @@ on:
   workflow_dispatch:
     inputs:
       DEVICE_TREE_URL:
-        description: 'Device Tree URL'
+        description: Device Tree URL
         required: true
-        default: 'https://github.com/vinokesunean-art/android_device_tecno_kn3'
+        default: https://github.com/vinokesunean-art/android_device_tecno_kn3
       DEVICE_TREE_BRANCH:
-        description: 'Device Tree Branch'
+        description: Device Tree Branch
         required: true
-        default: 'master'
+        default: master
       DEVICE_PATH:
-        description: 'Path target tree di source root'
+        description: Path the device tree should be synced to, relative to source root
         required: true
-        default: 'device/tecno/kn3'
+        default: device/tecno/kn3
       DEVICE_NAME:
-        description: 'Device codename'
+        description: Device Name from tree (should match name on twrp_DEVICE_NAME.mk)
         required: true
-        default: 'kn3'
+        default: kn3
       BUILD_TARGET:
-        description: 'Partition target'
+        description: Partition containing recovery ramdisk
         type: choice
         options:
-          - vendor_boot
-          - recovery
-          - boot
+        - boot
+        - recovery
+        - vendor_boot
         required: true
-        default: 'vendor_boot'
+        default: vendor_boot
 
 jobs:
   build:
+    if: github.event.repository.owner.id == github.event.sender.id
     runs-on: ubuntu-22.04
     steps:
-    - name: Notify Build Started
+    - name: Display Run Parameters
       run: |
-        curl -s -X POST "https://api.telegram.org/bot8950911881:AAEnwtyKg7boHfNWeL97O2y0NkoijzhJ13w/sendMessage" \
-          -d chat_id="-1004386707383" \
-          -d parse_mode="HTML" \
-          -d text="Start Building ofox! 🚀%0A%0ARepo: https://github.com/${{ github.repository }}%0ACommit: https://github.com/${{ github.repository }}/commit/${{ github.sha }}%0ALog: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        echo "::group::User Environment Variables"
+        echo "Device Tree URL: ${{ inputs.DEVICE_TREE_URL }}"
+        echo "Device Tree Branch: ${{ inputs.DEVICE_TREE_BRANCH }}"
+        echo "Device Path: ${{ inputs.DEVICE_PATH }}"
+        echo "Device Name: ${{ inputs.DEVICE_NAME }}"
+        echo "Build Target: ${{ inputs.BUILD_TARGET }}.img"
+        echo "::endgroup::"
+
+    - name: Notify build started
+      env:
+        TG_TOKEN: "8950911881:AAEnwtyKg7boHfNWeL97O2y0NkoijzhJ13w"
+        TG_CHAT: "-1004386707383"
+        URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        REPO: https://github.com/${{ github.repository }}
+        COMMIT: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+      run: |
+        MSG=$(printf '%s\n' \
+          "Start Building ofox! 🚀" \
+          "Repo: ${REPO}" \
+          "Commit: ${COMMIT}" \
+          "Log: ${URL}")
+        ESCAPED=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d "{\"chat_id\": \"${TG_CHAT}\", \"text\": ${ESCAPED}}"
 
     - name: Check Out
       uses: actions/checkout@v4
 
-    - name: Cleanup Space
+    - name: Cleanup
       uses: rokibhasansagar/slimhub_actions@main
 
     - name: Set Swap Space
@@ -53,48 +75,42 @@ jobs:
       with:
         swap-size-gb: 16
 
-    - name: Prepare the Environment
+    - name: Prepare the environment
       run: |
-        sudo apt update
-        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib \
-          libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev \
-          libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev \
-          liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop \
-          pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp \
-          qemu-user-static libstdc++-10-dev libtinfo5
+        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libtinfo5
         sudo add-apt-repository universe
         sudo apt -y install libncurses5
 
-    - name: Install Repo Tool
+    - name: Install repo
       run: |
-        mkdir -p ~/bin
+        mkdir ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         sudo ln -sf ~/bin/repo /usr/bin/repo
 
-    - name: Set up OrangeFox fox-14.1 Sources (Official Sync)
+    - name: Set up OrangeFox fox-14.1 sources
       run: |
         git config --global user.name "${GITHUB_ACTOR}"
-        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+        git config --global user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
         git clone https://gitlab.com/OrangeFox/sync /tmp/ofox-sync
         cd /tmp/ofox-sync
         ./orangefox_sync.sh -b 14.1 -p ${GITHUB_WORKSPACE}/workspace
 
-    - name: Clone Device Tree
+    - name: Clone device tree
       run: |
-        cd ${GITHUB_WORKSPACE}/workspace
+        cd workspace
         git clone -b ${{ inputs.DEVICE_TREE_BRANCH }} ${{ inputs.DEVICE_TREE_URL }} ${{ inputs.DEVICE_PATH }}
 
-    - name: Apply Device Patches (If Exists)
+    - name: Apply device patches
       run: |
-        if [ -d "${GITHUB_WORKSPACE}/workspace/${{ inputs.DEVICE_PATH }}/patches" ]; then
-          cd ${GITHUB_WORKSPACE}/workspace/${{ inputs.DEVICE_PATH }}/patches
-          find . -type f -print0 | xargs -0 cp -f --parents -t ${GITHUB_WORKSPACE}/workspace
+        if [ -d "workspace/${{ inputs.DEVICE_PATH }}/patches" ]; then
+          cd workspace/${{ inputs.DEVICE_PATH }}/patches
+          find . -type f -print0 | xargs -0 cp -f --parents -t $GITHUB_WORKSPACE/workspace
         fi
 
-    - name: Fix CTS Release Version Check
+    - name: Fix CTS release version check
       run: |
-        cd ${GITHUB_WORKSPACE}/workspace
+        cd workspace
         grep -q '^16\.1\.0$' cts/tests/tests/os/assets/platform_releases.txt || echo '16.1.0' >> cts/tests/tests/os/assets/platform_releases.txt
 
     - name: Building OrangeFox
@@ -102,12 +118,12 @@ jobs:
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
         export FOX_BUILD_DEVICE=${{ inputs.DEVICE_NAME }}
-        lunch fox_${{ inputs.DEVICE_NAME }}-eng || lunch twrp_${{ inputs.DEVICE_NAME }}-eng
+        lunch twwrp_${{ inputs.DEVICE_NAME }}-ap2a-eng || lunch twrp_${{ inputs.DEVICE_NAME }}-ap2a-eng
         export JOBS=2
         mka adbd $(tr -d _ <<< ${{ inputs.BUILD_TARGET }})image -j2
       working-directory: workspace
 
-    - name: Upload Build Artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ofox-${{ inputs.BUILD_TARGET }}
@@ -116,6 +132,7 @@ jobs:
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.img
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.zip
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.md5
+          workspace/out/target/product/${{ inputs.DEVICE_NAME }}/obj/PACKAGING/vendor_ramdisk_fragments_intermediates/recovery.*
         if-no-files-found: warn
 
     - name: Upload to Release
@@ -126,37 +143,43 @@ jobs:
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.img
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.zip
           workspace/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.md5
-        name: ${{ inputs.DEVICE_NAME }} OrangeFox Recovery
-        tag_name: build-${{ github.run_id }}
+          workspace/out/target/product/${{ inputs.DEVICE_NAME }}/obj/PACKAGING/vendor_ramdisk_fragments_intermediates/recovery.*
+        name: ${{ inputs.DEVICE_NAME }} (OrangeFox)
+        tag_name: ${{ github.run_id }}
         body: |
           Manifest: fox-14.1
           Target: ${{ inputs.BUILD_TARGET }}.img
-          Commit: ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify:
-    name: Telegram Notification
+    name: Telegram Summary
     needs: build
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Send Notification
+      - name: Send Telegram notification
+        env:
+          TG_TOKEN: "8950911881:AAEnwtyKg7boHfNWeL97O2y0NkoijzhJ13w"
+          TG_CHAT: "-1004386707383"
+          URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: https://github.com/${{ github.repository }}
+          COMMIT: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+          STATUS: ${{ needs.build.result }}
         run: |
-          CONCLUSION="${{ needs.build.result }}"
-          REPO_URL="https://github.com/${{ github.repository }}"
-          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
-          LOG_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
-          if [ "$CONCLUSION" = "success" ]; then
-            MSG="Ofox Status Passed! ✅%0A%0ARepo: ${REPO_URL}%0ACommit: ${COMMIT_URL}%0ALog: ${LOG_URL}"
-          elif [ "$CONCLUSION" = "cancelled" ]; then
-            MSG="y gw stop 🥸%0A%0ARepo: ${REPO_URL}%0ACommit: ${COMMIT_URL}%0ALog: ${LOG_URL}"
+          if [ "${STATUS}" = "success" ]; then
+            HEAD="Ofox Status Passed! ✅"
+          elif [ "${STATUS}" = "cancelled" ]; then
+            HEAD="y gw stop 🥸"
           else
-            MSG="Build Gagal! Silahkan Periksa Log ❌%0A%0ARepo: ${REPO_URL}%0ACommit: ${COMMIT_URL}%0ALog: ${LOG_URL}"
+            HEAD="Build Gagal! Silahkan Periksa Log ❌"
           fi
-          
-          curl -s -X POST "https://api.telegram.org/bot8950911881:AAEnwtyKg7boHfNWeL97O2y0NkoijzhJ13w/sendMessage" \
-            -d chat_id="-1004386707383" \
-            -d parse_mode="HTML" \
-            -d text="$MSG"
+          MSG=$(printf '%s\n' \
+            "${HEAD}" \
+            "Repo: ${REPO}" \
+            "Commit: ${COMMIT}" \
+            "Log: ${URL}")
+          ESCAPED=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TG_CHAT}\", \"text\": ${ESCAPED}}"
